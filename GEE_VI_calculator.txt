@@ -1,0 +1,216 @@
+// Copy and Paste in GEE script. Written in JavaScript 
+
+var county = ee.FeatureCollection("projects/ee-samifpm13/assets/County_Boundaries_of_Indiana_Current"); //County shape file
+var geometry = ee.FeatureCollection("projects/samiremotesensing/assets/shp_2014_projected"); 	// corn field geometry for whole indiana, Shape file
+
+
+var dataset = ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
+                  .filterDate('2014-06-15', '2014-08-20')
+                  .filterBounds(county);
+var getNDVI = function(image){
+  return image.addBands(image.normalizedDifference(['B5','B4']).rename('NDVI'))
+  };
+var getSAVI= function(image){
+    
+  var SAVI = image.expression ('(((NIR - RED) / (NIR + RED + L))* (1+L))',{
+        'L': 0.5, 
+        'NIR': image.select ('B5'),
+        'RED': image.select ('B4')
+    }).rename("SAVI")
+    
+    image = image.addBands(SAVI)
+
+    return(image)
+};
+
+// EVI calculation function
+var getEVI= function(image){
+    
+  var EVI = image.expression ('2.5 * ((NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1))', {
+      'NIR': image.select('B5'),
+      'RED': image.select('B4'),
+      'BLUE': image.select('B2')
+    }).rename("EVI")
+    
+    image = image.addBands(EVI)
+
+    return(image)
+};
+
+// GNDVI calculation function
+
+
+
+
+
+
+// NDVI calculation
+var addedndvi = dataset.map(getNDVI);
+var ndvi_indiana = addedndvi.select('NDVI');
+var ndvi_crop =  ndvi_indiana.filterBounds(county);
+print(ndvi_crop);
+var ndvi_crop_max = ndvi_crop.reduce(ee.Reducer.max());
+print(ndvi_crop_max);
+var ndvi_crop_max_indiana = ndvi_crop_max.clip(geometry);
+var ndvi_crop_max_indiana = ndvi_crop_max_indiana.clip(county);
+print(ndvi_crop_max_indiana);
+
+
+//Savi calculation
+
+var addedsavi = dataset.map(getSAVI);
+var savi_indiana = addedsavi.select('SAVI');
+var savi_crop =  savi_indiana.filterBounds(county);
+print(savi_crop);
+var savi_crop_max = savi_crop.reduce(ee.Reducer.max());
+print(savi_crop_max);
+var savi_crop_max_indiana = savi_crop_max.clip(geometry);
+var savi_crop_max_indiana = savi_crop_max_indiana.clip(county);
+print(savi_crop_max_indiana);
+
+// EVI canculation
+
+var addedevi = dataset.map(getEVI);
+var evi_indiana = addedevi.select('EVI');
+var evi_crop =  evi_indiana.filterBounds(county);
+print(evi_crop);
+var evi_crop_max = evi_crop.reduce(ee.Reducer.max());
+print(evi_crop_max);
+var evi_crop_max_indiana = evi_crop_max.clip(geometry);
+var evi_crop_max_indiana = evi_crop_max_indiana.clip(county);
+print(evi_crop_max_indiana);
+
+
+
+var getGNDVI= function(image){
+    
+  var GNDVI = image.expression ('(NIR-GREEN)/(NDVI+GREEN)',{
+        'L': 1, 
+        'G' : 2.5,
+        'C1' : 6,
+        'C2' : 7.5,
+        'NIR': image.select ('B5'),
+        'RED': image.select ('B4'),
+        'GREEN' : image.select ("B3"),
+        'NDVI': image.select("NDVI")
+    }).rename("GNDVI")
+    
+    image = image.addBands(GNDVI)
+
+    return(image)
+};
+// GNDVI calculationvar evi_indiana = addedevi.select('EVI');
+
+var addedgndvi = addedndvi.map(getGNDVI);
+var gndvi_indiana = addedgndvi.select('GNDVI');
+var gndvi_crop =  gndvi_indiana.filterBounds(county);
+print(gndvi_crop);
+var gndvi_crop_max = gndvi_crop.reduce(ee.Reducer.max());
+print(gndvi_crop_max);
+var gndvi_crop_max_indiana = gndvi_crop_max.clip(geometry);
+var gndvi_crop_max_indiana = gndvi_crop_max_indiana.clip(county);
+print(gndvi_crop_max_indiana);
+
+
+
+// map ndvi
+var colorizedVis = {
+  min: 0.0,
+  max: 1.0,
+  palette: [
+    'FFFFFF', 'CE7E45', 'DF923D', 'F1B555', 'FCD163', '99B718', '74A901',
+    '66A000', '529400', '3E8601', '207401', '056201', '004C00', '023B01',
+    '012E01', '011D01', '011301'
+  ],
+};
+Map.setCenter(-86.06,40.43, 6);
+Map.addLayer(ndvi_crop_max_indiana, colorizedVis, 'Colorized');
+// , colorizedVis, 'Colorized'
+
+// mean calc NDVI
+
+var ndvi_means = ndvi_crop_max_indiana.reduceRegions({
+  collection: county,
+  reducer: ee.Reducer.mean(),
+  scale: 30,
+});
+print(ndvi_means);
+
+// mean calc SAVI
+
+var savimeans = savi_crop_max_indiana.reduceRegions({
+  collection: county,
+  reducer: ee.Reducer.mean(),
+  scale: 30,
+});
+
+print(savimeans);
+
+
+// means calc EVI
+
+var evimeans = evi_crop_max_indiana.reduceRegions({
+  collection: county,
+  reducer: ee.Reducer.mean(),
+  scale: 30,
+});
+
+print(evimeans);
+
+
+// mean calc gndvi
+
+var gndvimeans = gndvi_crop_max_indiana.reduceRegions({
+  collection: county,
+  reducer: ee.Reducer.mean(),
+  scale: 30,
+});
+
+print(gndvimeans);
+
+
+
+Export.table.toDrive({
+    collection: ndvi_means,
+    description: 'NDVI', 
+    folder: 'geotiff', 
+    fileNamePrefix: 'NDVI_mean_14', 
+    fileFormat: 'CSV'
+});
+
+Export.table.toDrive({
+    collection: evimeans,
+    description: 'EVI', 
+    folder: 'geotiff', 
+    fileNamePrefix: 'evi_mean_14', 
+    fileFormat: 'CSV'
+});
+
+Export.table.toDrive({
+    collection: savimeans,
+    description: 'SAVI', 
+    folder: 'geotiff', 
+    fileNamePrefix: 'SAVI_mean_14', 
+    fileFormat: 'CSV'
+});
+
+Export.table.toDrive({
+    collection: gndvimeans,
+    description: 'GNDVI', 
+    folder: 'geotiff', 
+    fileNamePrefix: 'GNDVI_mean_14', 
+    fileFormat: 'CSV'
+});
+// Export.image.toDrive({
+//   image: ndvi_crop_max_indiana,
+//   description: 'max_ndvi_16',
+//   scale: 100,
+//   maxPixels: 1e13,
+// });
+
+// var savimean_joined = savimeans.select('mean');
+
+console.log(typeof gndvimeans);
+
+
+
